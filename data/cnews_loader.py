@@ -2,15 +2,16 @@
 
 import sys
 from collections import Counter
-
 import numpy as np
 import tensorflow.contrib.keras as kr
+import jieba
+from itertools import chain
 
 if sys.version_info[0] > 2:
     is_py3 = True
 else:
-    reload(sys)
-    sys.setdefaultencoding("utf-8")
+    # reload(sys)
+    # sys.setdefaultencoding("utf-8")
     is_py3 = False
 
 
@@ -40,7 +41,7 @@ def open_file(filename, mode='r'):
         return open(filename, mode)
 
 
-def read_file(filename):
+def read_file_dict(filename):
     """读取文件数据"""
     contents, labels = [], []
     with open_file(filename) as f:
@@ -48,16 +49,18 @@ def read_file(filename):
             try:
                 label, content = line.strip().split('\t')
                 if content:
-                    contents.append(list(native_content(content)))
+                    cont = native_content(content)
+                    contents.append(list(cont) + list(jieba.cut(cont)))
                     labels.append(native_content(label))
             except:
                 pass
+    print("file loaded... building dict...")
     return contents, labels
 
 
 def build_vocab(train_dir, vocab_dir, vocab_size=5000):
     """根据训练集构建词汇表，存储"""
-    data_train, _ = read_file(train_dir)
+    data_train, _ = read_file_dict(train_dir)
 
     all_data = []
     for content in data_train:
@@ -99,15 +102,18 @@ def to_words(content, words):
 
 def process_file(filename, word_to_id, cat_to_id, max_length=600):
     """将文件转换为id表示"""
-    contents, labels = read_file(filename)
+    contents, labels = read_file_other(filename)
 
     data_id, label_id = [], []
     for i in range(len(contents)):
-        data_id.append([word_to_id[x] for x in contents[i] if x in word_to_id])
+        # data_id.append([word_to_id[x] for x in contents[i] if x in word_to_id])
+        features = build_features(contents[i], ['手机'], ['小米'], word_to_id)
+        data_id.append(features)
         label_id.append(cat_to_id[labels[i]])
 
     # 使用keras提供的pad_sequences来将文本pad为固定长度
-    x_pad = kr.preprocessing.sequence.pad_sequences(data_id, max_length)
+    # x_pad = kr.preprocessing.sequence.pad_sequences(data_id, max_length)
+    x_pad = np.array(data_id)
     y_pad = kr.utils.to_categorical(label_id, num_classes=len(cat_to_id))  # 将标签转换为one-hot表示
 
     return x_pad, y_pad
@@ -119,6 +125,7 @@ def batch_iter(x, y, batch_size=64):
     num_batch = int((data_len - 1) / batch_size) + 1
 
     indices = np.random.permutation(np.arange(data_len))
+    print(x.shape)
     x_shuffle = x[indices]
     y_shuffle = y[indices]
 
@@ -126,3 +133,45 @@ def batch_iter(x, y, batch_size=64):
         start_id = i * batch_size
         end_id = min((i + 1) * batch_size, data_len)
         yield x_shuffle[start_id:end_id], y_shuffle[start_id:end_id]
+
+
+def build_features(content, products, brands, word2id, after_pading_sizes=(150, 150, 150, 150), id_to_use=(0, 1, 2, 3)):
+    """构建特征"""
+    default_id = len(word2id)
+    chars = [word2id.get(c, default_id) for c in content]
+    ws = list(jieba.cut(content))
+    words = [word2id.get(w, default_id) for w in ws]
+    product_words = [int(w in products) for w in ws]
+    brand_words = [int(w in brands) for w in ws]
+
+    after_pading_sizes = dict(zip(id_to_use, after_pading_sizes))
+    # padding = lambda x: np.pad(x[1], (0, after_pading_sizes[x[0]] - len(x[1])), mode='constant')
+    # padding = lambda x: kr.preprocessing.sequence.pad_sequences(x[1], after_pading_sizes[x[0]])
+
+    def padding(x):
+        i, data = x
+        return kr.preprocessing.sequence.pad_sequences([data], after_pading_sizes[i], padding='post')[0]
+
+    to_use = lambda x: x[0] in id_to_use
+
+    enum_features = enumerate([chars, words, product_words, brand_words])
+    features_map = map(padding, filter(to_use, enum_features))
+
+    return list(chain(*features_map))
+
+
+def read_file_other(filename):
+    """读取文件数据"""
+    contents, labels = [], []
+    with open_file(filename) as f:
+        for line in f:
+            try:
+                label, content = line.strip().split('\t')
+                if content:
+                    cont = native_content(content)
+                    contents.append(cont)
+                    labels.append(native_content(label))
+            except:
+                pass
+    print("file loaded...")
+    return contents, labels

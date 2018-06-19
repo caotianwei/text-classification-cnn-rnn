@@ -100,7 +100,7 @@ def train():
         batch_train = batch_iter(x_train, y_train, config.batch_size)
         for x_batch, y_batch in batch_train:
             feed_dict = feed_data(x_batch, y_batch, config.dropout_keep_prob)
-
+            print()
             if total_batch % config.save_per_batch == 0:
                 # 每多少轮次将训练结果写入tensorboard scalar
                 s = session.run(merged_summary, feed_dict=feed_dict)
@@ -182,8 +182,8 @@ def test():
 
 
 if __name__ == '__main__':
-    if len(sys.argv) != 2 or sys.argv[1] not in ['train', 'test']:
-        raise ValueError("""usage: python run_cnn.py [train / test]""")
+    # if len(sys.argv) != 2 or sys.argv[1] not in ['train', 'test']:
+    #     raise ValueError("""usage: python run_cnn.py [train / test]""")
 
     print('Configuring CNN model...')
     config = TCNNConfig()
@@ -194,7 +194,8 @@ if __name__ == '__main__':
     config.vocab_size = len(words)
     model = TextCNN(config)
 
-    if sys.argv[1] == 'train':
-        train()
-    else:
-        test()
+    train()
+    # if sys.argv[1] == 'train':
+    #     train()
+    # else:
+    #     test()
